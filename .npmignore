@@ -1,0 +1,27 @@
+# source code
+src/
+examples/
+
+# dependencies
+node_modules/
+yarn-error.log
+npm-debug*
+
+# logs
+*.log
+.env 
+
+# coverage
+.nyc_output
+coverage
+
+# test output
+test/**/out
+.DS_Store
+
+#editors
+.idea
+.vscode
+
+#secrets
+*.pem
