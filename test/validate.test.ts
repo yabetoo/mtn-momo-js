@@ -279,16 +279,16 @@ describe("Validate", function() {
         );
       });
     });
-
+      
     context("when referenceId is not a valid uuid", function() {
-      it("throws an error", function() {
+      it("throws an error", function () {
         const request = { referenceId: "test reference id" } as TransferRequest;
         return expect(validateTransfer(request)).to.be.rejectedWith(
           "referenceId must be a valid uuid v4"
         );
       });
     });
-
+      
     context("when the amount is missing", function() {
       it("throws an error", function() {
         const request = { referenceId: uuid() } as TransferRequest;

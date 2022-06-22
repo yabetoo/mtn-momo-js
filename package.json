@@ -1,6 +1,6 @@
 {
   "name": "@yabetoo/mtn-momo-js",
-  "version": "0.1.1",
+  "version": "0.1.3",
   "description": "MTN Mobile Money API Client for NodeJS written in TypeScript",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
@@ -72,10 +72,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/sparkplug/momoapi-node.git"
+    "url": "git+https://github.com/yabetoo/mtn-momo-js.git"
   },
   "bugs": {
-    "url": "https://github.com/sparkplug/momoapi-node/issues"
+    "url": "https://github.com/yabetoo/mtn-momo-js/issues"
   },
-  "homepage": "https://github.com/sparkplug/momoapi-node#readme"
+  "homepage": "https://github.com/yabetoo/mtn-momo-js#readme"
 }

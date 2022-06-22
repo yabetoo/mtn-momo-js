@@ -26,7 +26,7 @@
 Add the library to your project
 
 ```sh
-npm install --save mtn-momo
+npm install --save @yabetoo/mtn-momo-js
 ```
 
 ## Sandbox Credentials
