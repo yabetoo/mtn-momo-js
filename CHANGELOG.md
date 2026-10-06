@@ -21,7 +21,7 @@
 - Network errors keep their axios `code` but lose their request headers and socket, so they are safe to log.
 - `isPayerActive` returns a `boolean` instead of MTN's `{ result }` body.
 - Validation error messages no longer depend on the Node.js version.
-- `axios` 1.x; `uuid` and `commander` removed.
+- `axios` 1.x; `uuid` and `commander` removed. Node.js 20 or later.
 
 ### Removed
 

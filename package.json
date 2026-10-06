@@ -20,7 +20,7 @@
   },
   "homepage": "https://github.com/yabetoo/mtn-momo-js#readme",
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "main": "./lib/index.js",
   "module": "./lib/index.mjs",

@@ -13,7 +13,7 @@ disbursements, remittances and sandbox provisioning.
 - **Observability hook** with templated routes: no phone number, header or secret ever reaches it.
 - Works with API user ids in any format (MTN no longer issues only UUIDs).
 
-Requires Node.js 18 or later.
+Requires Node.js 20 or later.
 
 ## Installation
 

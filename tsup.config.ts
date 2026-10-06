@@ -6,7 +6,7 @@ export default defineConfig({
   outDir: "lib",
   dts: true,
   clean: true,
-  target: "node18",
+  target: "node20",
   platform: "node",
   sourcemap: false
 });
