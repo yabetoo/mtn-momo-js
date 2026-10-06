@@ -1,129 +1,102 @@
-import { FailureReason } from "../src/common";
-import {
-  ApprovalRejectedError,
-  ExpiredError,
-  getError,
-  handleError,
-  InternalProcessingError,
-  InvalidCallbackUrlHostError,
-  InvalidCurrencyError,
-  NotAllowedError,
-  NotAllowedTargetEnvironmentError,
-  NotEnoughFundsError,
-  PayeeNotAllowedToReceiveError,
-  PayeeNotFoundError,
-  PayerLimitReachedError,
-  PayerNotFoundError,
-  PaymentNotApprovedError,
-  ResourceAlreadyExistError,
-  ResourceNotFoundError,
-  ServiceUnavailableError,
-  TransactionCancelledError,
-  UnspecifiedError
-} from "../src/errors";
-import { expect } from "./chai";
+import { createServer } from "net";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-describe("Errors", function() {
-  describe("getError", function() {
-    context("when there is no error code", function() {
-      it("returns unspecified error", function() {
-        expect(getError()).is.instanceOf(UnspecifiedError);
-      });
-    });
+import { handleError, MtnMoMoError, NotEnoughFundsError, UnspecifiedError } from "../src";
+import { clients, FakeMtn } from "./support/fake-mtn";
 
-    context("when there is an error code", function() {
-      it("returns the correct error", function() {
-        expect(getError(FailureReason.APPROVAL_REJECTED, "test message"))
-          .is.instanceOf(ApprovalRejectedError)
-          .and.has.property("message", "test message");
+let fake: FakeMtn;
+beforeEach(async () => (fake = await new FakeMtn().start()));
+afterEach(() => fake.stop());
 
-        expect(getError(FailureReason.EXPIRED, "test message"))
-          .is.instanceOf(ExpiredError)
-          .and.has.property("message", "test message");
-
-        expect(
-          getError(FailureReason.INTERNAL_PROCESSING_ERROR, "test message")
-        )
-          .is.instanceOf(InternalProcessingError)
-          .and.has.property("message", "test message");
-
-        expect(
-          getError(FailureReason.INVALID_CALLBACK_URL_HOST, "test message")
-        )
-          .is.instanceOf(InvalidCallbackUrlHostError)
-          .and.has.property("message", "test message");
-
-        expect(getError(FailureReason.INVALID_CURRENCY, "test message"))
-          .is.instanceOf(InvalidCurrencyError)
-          .and.has.property("message", "test message");
-
-        expect(getError(FailureReason.NOT_ALLOWED, "test message"))
-          .is.instanceOf(NotAllowedError)
-          .and.has.property("message", "test message");
-
-        expect(
-          getError(FailureReason.NOT_ALLOWED_TARGET_ENVIRONMENT, "test message")
-        )
-          .is.instanceOf(NotAllowedTargetEnvironmentError)
-          .and.has.property("message", "test message");
-
-        expect(getError(FailureReason.NOT_ENOUGH_FUNDS, "test message"))
-          .is.instanceOf(NotEnoughFundsError)
-          .and.has.property("message", "test message");
-
-        expect(
-          getError(FailureReason.PAYEE_NOT_ALLOWED_TO_RECEIVE, "test message")
-        )
-          .is.instanceOf(PayeeNotAllowedToReceiveError)
-          .and.has.property("message", "test message");
-
-        expect(getError(FailureReason.PAYEE_NOT_FOUND, "test message"))
-          .is.instanceOf(PayeeNotFoundError)
-          .and.has.property("message", "test message");
-
-        expect(getError(FailureReason.PAYER_LIMIT_REACHED, "test message"))
-          .is.instanceOf(PayerLimitReachedError)
-          .and.has.property("message", "test message");
-
-        expect(getError(FailureReason.PAYER_NOT_FOUND, "test message"))
-          .is.instanceOf(PayerNotFoundError)
-          .and.has.property("message", "test message");
-
-        expect(getError(FailureReason.PAYMENT_NOT_APPROVED, "test message"))
-          .is.instanceOf(PaymentNotApprovedError)
-          .and.has.property("message", "test message");
-
-        expect(getError(FailureReason.RESOURCE_ALREADY_EXIST, "test message"))
-          .is.instanceOf(ResourceAlreadyExistError)
-          .and.has.property("message", "test message");
-
-        expect(getError(FailureReason.RESOURCE_NOT_FOUND, "test message"))
-          .is.instanceOf(ResourceNotFoundError)
-          .and.has.property("message", "test message");
-
-        expect(getError(FailureReason.SERVICE_UNAVAILABLE, "test message"))
-          .is.instanceOf(ServiceUnavailableError)
-          .and.has.property("message", "test message");
-
-        expect(getError(FailureReason.TRANSACTION_CANCELED, "test message"))
-          .is.instanceOf(TransactionCancelledError)
-          .and.has.property("message", "test message");
-      });
+const freePort = () =>
+  new Promise<number>(resolve => {
+    const server = createServer().listen(0, () => {
+      const { port } = server.address() as { port: number };
+      server.close(() => resolve(port));
     });
   });
 
-  describe("handleError", function() {
-    it("carries the HTTP status, url and raw MTN code", function() {
-      const error = handleError({
-        config: { url: "/collection/v1_0/requesttopay" },
-        response: { status: 409, data: { code: FailureReason.RESOURCE_ALREADY_EXIST, message: "dup" } }
-      } as any);
-      expect(error).is.instanceOf(ResourceAlreadyExistError);
-      expect(error).to.include({
-        status: 409,
-        url: "/collection/v1_0/requesttopay",
-        failureReason: FailureReason.RESOURCE_ALREADY_EXIST
-      });
+describe("MTN error responses", () => {
+  it("maps the MTN body to a typed error with status, url and reason", async () => {
+    const { collections } = clients(fake);
+    fake.respondOnce("GET", /balance/, 400, { code: "NOT_ENOUGH_FUNDS", message: "The payer does not have enough funds." });
+
+    const error = await collections.getBalance().catch(e => e);
+
+    expect(error).toBeInstanceOf(NotEnoughFundsError);
+    expect(error).toBeInstanceOf(MtnMoMoError);
+    expect(error).toMatchObject({
+      name: "NotEnoughFundsError",
+      message: "The payer does not have enough funds.",
+      status: 400,
+      url: "/collection/v1_0/account/balance",
+      failureReason: "NOT_ENOUGH_FUNDS"
     });
+  });
+
+  it("falls back to UnspecifiedError for an unknown code or an empty body", async () => {
+    const { collections } = clients(fake);
+    fake.respondOnce("GET", /balance/, 400, { code: "BRAND_NEW_CODE", message: "?" });
+    fake.respondOnce("GET", /balance/, 503);
+
+    await expect(collections.getBalance()).rejects.toMatchObject({
+      name: "UnspecifiedError",
+      status: 400,
+      failureReason: "BRAND_NEW_CODE"
+    });
+    const empty = await collections.getBalance().catch(e => e);
+    expect(empty).toBeInstanceOf(UnspecifiedError);
+    expect(empty.status).toBe(503);
+  });
+
+  it("keeps the codes MTN Congo returns on a failed transfer as failureReason", async () => {
+    const { disbursements } = clients(fake);
+    fake.respondOnce("POST", /transfer/, 500, { code: "COULD_NOT_PERFORM_TRANSACTION", message: "Could not perform transaction" });
+
+    const error = await disbursements
+      .transfer({ amount: "100", currency: "XAF", payee: { partyIdType: "MSISDN", partyId: "242061234567" } })
+      .catch(e => e);
+
+    expect(error).toMatchObject({ name: "UnspecifiedError", status: 500, failureReason: "COULD_NOT_PERFORM_TRANSACTION" });
+  });
+});
+
+describe("network errors", () => {
+  it("passes a timeout through as the axios error, code ECONNABORTED", async () => {
+    const { collections } = clients(fake, { timeout: 50 });
+    await collections.getBalance();
+    fake.respondOnce("GET", /balance/, 200, {}, 200);
+
+    const error = await collections.getBalance().catch(e => e);
+
+    expect(error).not.toBeInstanceOf(MtnMoMoError);
+    expect(error.isAxiosError).toBe(true);
+    expect(error.code).toBe("ECONNABORTED");
+  });
+
+  it("passes a refused connection through, without headers or socket", async () => {
+    const port = await freePort();
+    const { collections } = clients(fake, { baseUrl: `http://127.0.0.1:${port}` });
+
+    const error = await collections.getBalance().catch(e => e);
+
+    expect(error.isAxiosError).toBe(true);
+    expect(error.code).toBe("ECONNREFUSED");
+    expect(error.config).toEqual({ url: "/collection/token/", method: "post" });
+    expect(error.request).toBeUndefined();
+    expect(JSON.stringify(error.toJSON?.() ?? {})).not.toContain("subscription-key");
+  });
+
+  it("leaves an already typed error untouched", () => {
+    const error = new UnspecifiedError("x");
+    expect(handleError(error as never)).toBe(error);
+  });
+});
+
+describe("configuration", () => {
+  it("applies the timeout and keeps the axios instance reachable as `client`", () => {
+    const { collections } = clients(fake, { timeout: 5000 });
+    expect((collections as unknown as { client: { defaults: { timeout: number } } }).client.defaults.timeout).toBe(5000);
+    expect((clients(fake).collections as any).client.defaults.timeout).toBe(30_000);
   });
 });

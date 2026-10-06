@@ -1,46 +1,35 @@
-export { Payment, PaymentRequest } from "./collections";
-export { Transfer, TransferRequest } from "./disbursements";
-export { Remit, RemittanceRequest } from "./remittances";
-
-export * from "./errors";
-export {
-  PartyIdType as PayerType,
-  Party as Payer,
-  TransactionStatus as Status,
-  Balance,
-  Environment,
-  FailureReason,
-  GlobalConfig,
-  ProductConfig
-} from "./common";
-
 import { AxiosInstance } from "axios";
 
+import { createAuthClient, createTokenProvider, MemoryTokenStore } from "./auth";
+import { createClient, withErrorHandling, withObservability } from "./client";
 import Collections from "./collections";
+import { Config, Environment, GlobalConfig, Product, ProductConfig, SubscriptionConfig } from "./common";
 import Disbursements from "./disbursements";
 import Remittances from "./remittances";
 import Users from "./users";
+import { validateGlobalConfig, validateProductConfig, validateSubscriptionConfig } from "./validate";
 
-import {
-  authorizeCollections,
-  authorizeDisbursements,
-  authorizeRemittances,
-  createTokenRefresher
-} from "./auth";
-import { createAuthClient, createClient } from "./client";
-import {
-  validateGlobalConfig,
-  validateProductConfig,
-  validateSubscriptionConfig
-} from "./validate";
-
-import {
-  Config,
-  Environment,
+export type { Payment, PaymentRequest } from "./collections";
+export type { Transfer, TransferRequest } from "./disbursements";
+export type { Remit, RemittanceRequest } from "./remittances";
+export type {
+  AccessToken,
+  Balance,
+  BasicUserInfo,
+  Credentials,
   GlobalConfig,
+  MomoEvent,
+  Party as Payer,
+  PartyIdTypeValue,
   ProductConfig,
-  SubscriptionConfig
+  SubscriptionConfig,
+  TokenStore,
+  UserConfig
 } from "./common";
+export { Environment, FailureReason, PartyIdType as PayerType, TransactionStatus as Status } from "./common";
+export * from "./errors";
+export { MemoryTokenStore } from "./auth";
+export { Collections, Disbursements, Remittances, Users };
 
 export interface MomoClient {
   Collections(productConfig: ProductConfig): Collections;
@@ -55,72 +44,35 @@ const defaultGlobalConfig: GlobalConfig = {
 };
 
 /**
- * Initialise the library
- *
- * @param globalConfig Global configuration required to use any product
+ * Initialises the library. Clients created from one `create()` share its token store, so two
+ * `Collections` built with the same API user reuse one token.
  */
 export function create(globalConfig: GlobalConfig): MomoClient {
   validateGlobalConfig(globalConfig);
+  const tokenStore = globalConfig.tokenStore || new MemoryTokenStore();
+
+  const product = (name: Product, productConfig: ProductConfig): AxiosInstance => {
+    validateProductConfig(productConfig);
+    const config: Config = { ...defaultGlobalConfig, ...globalConfig, ...productConfig };
+    // Order matters: observability sees the raw response, the 401 retry runs before errors are typed.
+    return withErrorHandling(
+      createAuthClient(
+        createTokenProvider(name, config, tokenStore),
+        withObservability(createClient(config), name, config.onEvent)
+      )
+    );
+  };
 
   return {
-    Collections(productConfig: ProductConfig): Collections {
-      validateProductConfig(productConfig);
-
-      const config: Config = {
-        ...defaultGlobalConfig,
-        ...globalConfig,
-        ...productConfig
-      };
-
-      const client: AxiosInstance = createAuthClient(
-        createTokenRefresher(authorizeCollections, config),
-        createClient(config)
-      );
-      return new Collections(client);
-    },
-
-    Disbursements(productConfig: ProductConfig): Disbursements {
-      const config: Config = {
-        ...defaultGlobalConfig,
-        ...globalConfig,
-        ...productConfig
-      };
-
-      const client: AxiosInstance = createAuthClient(
-        createTokenRefresher(authorizeDisbursements, config),
-        createClient(config)
-      );
-
-      return new Disbursements(client);
-    },
-
-    Remittances(productConfig: ProductConfig): Remittances {
-      const config: Config = {
-        ...defaultGlobalConfig,
-        ...globalConfig,
-        ...productConfig,
-      };
-
-      const client: AxiosInstance = createAuthClient(
-        createTokenRefresher(authorizeRemittances, config),
-        createClient(config)
-      );
-
-      return new Remittances(client);
-    },
-
+    Collections: productConfig => new Collections(product("collection", productConfig)),
+    Disbursements: productConfig => new Disbursements(product("disbursement", productConfig)),
+    Remittances: productConfig => new Remittances(product("remittance", productConfig)),
     Users(subscriptionConfig: SubscriptionConfig): Users {
       validateSubscriptionConfig(subscriptionConfig);
-
-      const config: GlobalConfig & SubscriptionConfig = {
-        ...defaultGlobalConfig,
-        ...globalConfig,
-        ...subscriptionConfig
-      };
-
-      const client: AxiosInstance = createClient(config);
-
-      return new Users(client);
+      const config = { ...defaultGlobalConfig, ...globalConfig, ...subscriptionConfig };
+      return new Users(withErrorHandling(withObservability(createClient(config), "provisioning", config.onEvent)));
     }
   };
 }
+
+export default { create };

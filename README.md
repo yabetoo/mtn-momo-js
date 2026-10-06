@@ -1,222 +1,205 @@
-# MTN MoMo API NodeJS Client</h1>
+# @yabetoo/mtn-momo-js
 
-<strong>Power your apps with our MTN MoMo API</strong>
+Typed Node.js client for the [MTN Mobile Money (MoMo) API](https://momodeveloper.mtn.com/): collections,
+disbursements, remittances and sandbox provisioning.
 
-<div>
-  Join our active, engaged community: <br>
-  <a href="https://momodeveloper.mtn.com/">Website</a>
-  <span> | </span>
-  <a href="https://spectrum.chat/momo-api-developers/">Spectrum</a>
-  <br><br>
-</div>
+[![CI](https://github.com/yabetoo/mtn-momo-js/actions/workflows/ci.yml/badge.svg)](https://github.com/yabetoo/mtn-momo-js/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/@yabetoo/mtn-momo-js.svg)](https://www.npmjs.com/package/@yabetoo/mtn-momo-js)
 
+- **ESM and CommonJS**, TypeScript declarations included, one runtime dependency (`axios`).
+- **Token cache** with single-flight minting and a pluggable store (Redis…), shared across processes.
+- **One retry after a 401**, with the same `X-Reference-Id`, so a retried initiation can never execute twice.
+- **Typed errors** carrying the HTTP status, the failing path and MTN's raw reason code.
+- **Observability hook** with templated routes: no phone number, header or secret ever reaches it.
+- Works with API user ids in any format (MTN no longer issues only UUIDs).
 
-[![Build Status](https://travis-ci.com/sparkplug/momoapi-node.svg?branch=master)](https://travis-ci.com/sparkplug/momoapi-node)
-[![NPM Version](https://badge.fury.io/js/mtn-momo.svg)](https://badge.fury.io/js/mtn-momo)
-![Installs](https://img.shields.io/npm/dt/mtn-momo.svg)
-[![Known Vulnerabilities](https://snyk.io/test/npm/mtn-momo/badge.svg)](https://snyk.io/test/npm/mtn-momo)
-[![Coverage Status](https://coveralls.io/repos/github/sparkplug/momoapi-node/badge.svg?branch=master)](https://coveralls.io/github/sparkplug/momoapi-node?branch=master)
-[![Join the community on Spectrum](https://withspectrum.github.io/badge/badge.svg)](https://spectrum.chat/momo-api-developers/)
+Requires Node.js 20 or later.
 
-
-## Usage
-
-### Installation
-
-Add the library to your project
+## Installation
 
 ```sh
-npm install --save @yabetoo/mtn-momo-js
+npm install @yabetoo/mtn-momo-js
 ```
 
-## Sandbox Credentials
+## Quick start
 
-Next, we need to get the `User ID` and `User Secret` and to do this we shall need to use the `Primary Key` for the `Product` to which we are subscribed, as well as specify a `host`. We run the `momo-sandbox` as below.
+```ts
+import momo from "@yabetoo/mtn-momo-js";
 
-```sh
-## Within a project
-npx momo-sandbox --host example.com --primary-key 23e2r2er2342blahblah
+const { Collections } = momo.create({
+  callbackHost: "callbacks.example.com",
+  baseUrl: "https://momoapi.momo.africa",
+  environment: "mtncongo" // the X-Target-Environment MTN assigned to you
+});
+
+const collections = Collections({
+  primaryKey: process.env.MOMO_COLLECTION_PRIMARY_KEY!,
+  userId: process.env.MOMO_COLLECTION_USER_ID!,
+  userSecret: process.env.MOMO_COLLECTION_USER_SECRET!
+});
+
+const referenceId = await collections.requestToPay({
+  amount: "1000",
+  currency: "XAF",
+  externalId: "order_123",
+  payer: { partyIdType: "MSISDN", partyId: "242061234567" },
+  payerMessage: "Order 123",
+  payeeNote: "Order 123"
+});
+
+const payment = await collections.getTransaction(referenceId); // PENDING until the payer answers
 ```
 
-If all goes well, it will print the credentials on the terminal;
-
-```sh
-Momo Sandbox Credentials {
-  "userSecret": "b2e23bf4e3984a16a55dbfc2d45f66b0",
-  "userId": "8ecc7cf3-0db8-4013-9c7b-da4894460041"
-}
-```
-
-These are the credentials we shall use for the `sandbox` environment. In production, these credentials are provided for you on the MTN OVA management dashboard after KYC requirements are met.
+CommonJS works the same way: `const momo = require("@yabetoo/mtn-momo-js")`.
 
 ## Configuration
 
-Before we can fully utilize the library, we need to specify global configurations. The global configuration must contain the following:
+`momo.create(config)` takes:
 
-- `baseUrl`: An optional base url to the MTN Momo API. By default the staging base url will be used
-- `environment`: Optional enviroment, either "sandbox" or "production". Default is 'sandbox'
-- `callbackHost`: The domain where you webhooks urls are hosted. This is mandatory.
+| Option | Required | Description |
+| --- | --- | --- |
+| `callbackHost` | yes | Host MTN calls back on. Any `callbackUrl` must belong to it. |
+| `baseUrl` | outside the sandbox | Gateway URL. Defaults to `https://sandbox.momodeveloper.mtn.com`. |
+| `environment` | no | `X-Target-Environment`, sent on every request including the token mint. Defaults to `sandbox`. |
+| `timeout` | no | Per-request timeout in milliseconds. Defaults to `30000`. |
+| `tokenStore` | no | Where access tokens are cached. Defaults to an in-memory store scoped to this `create()`. |
+| `onEvent` | no | Observability hook, see [Observability](#observability). |
 
-As an example, you might configure the library like this:
+Each product then takes its own credentials: `{ primaryKey, userId, userSecret }`.
 
-```js
-const momo = require("mtn-momo");
+Clients built from the same `create()` share their tokens. Building a client is cheap: it is fine to build
+one per request.
 
-const { Collections, Disbursements } = momo.create({
-  callbackHost: process.env.CALLBACK_HOST
+## API
+
+Every product client (`Collections`, `Disbursements`, `Remittances`) exposes:
+
+| Method | Returns |
+| --- | --- |
+| `getTransaction(referenceId)` | The transaction. A `FAILED` one rejects with its typed error. |
+| `getBalance(currency?)` | `{ availableBalance, currency }`, in the account currency or the one given. |
+| `isPayerActive(id, type = "MSISDN")` | `true` if the account holder is registered and active. |
+| `getBasicUserInfo(msisdn)` | The holder's name (`given_name`, `family_name`…). Rejects with `status: 404` for an unknown number. |
+
+And one initiation, each returning the reference sent as `X-Reference-Id`:
+
+| Product | Method |
+| --- | --- |
+| `Collections` | `requestToPay({ amount, currency, payer, externalId?, payerMessage?, payeeNote?, referenceId?, callbackUrl? })` |
+| `Disbursements` | `transfer({ amount, currency, payee, … })` |
+| `Remittances` | `remit({ amount, currency, payee, … })` |
+
+`referenceId` must be a UUID v4 and is generated when omitted. Pass your own to make an initiation
+idempotent: MTN answers `409 RESOURCE_ALREADY_EXIST` to a reused reference.
+
+MSISDNs are in international format without `+` (`242061234567`).
+
+## Token cache
+
+Tokens are minted once per product, environment and API user, cached until one minute before expiry, and
+shared by concurrent calls. To share them across processes, pass a store:
+
+```ts
+import type { TokenStore } from "@yabetoo/mtn-momo-js";
+
+const tokenStore: TokenStore = {
+  get: key => redis.get(key),
+  set: async (key, token, ttlSeconds) => void (await redis.set(key, token, "EX", ttlSeconds)),
+  delete: async key => void (await redis.del(key))
+};
+
+momo.create({ callbackHost, baseUrl, environment, tokenStore });
+```
+
+The store is a cache, never a dependency. A failing `get` counts as a miss, and a failing `set` or
+`delete` is ignored. Each failure is reported to `onEvent` as `token_store_error`.
+
+When MTN answers `401` to a product call, the token is dropped and the request is retried **once** with a
+fresh one. The retry carries the same `X-Reference-Id`. A failed mint is never retried.
+
+## Errors
+
+Validation errors are thrown **before** any network call, as Node's `AssertionError`.
+
+Errors returned by MTN reject as subclasses of `MtnMoMoError`, chosen from MTN's error code
+(`NotEnoughFundsError`, `PayerNotFoundError`, `ResourceAlreadyExistError`…). A code without a dedicated class
+gives `UnspecifiedError`.
+
+| Property | Meaning |
+| --- | --- |
+| `status` | HTTP status of the MTN response. |
+| `url` | Path that failed. `/{product}/token/` means the token mint failed and the product call was never sent. |
+| `failureReason` | MTN's raw code or transaction `reason`, including codes without a class. |
+| `transaction` | The transaction, when `getTransaction` read a `FAILED` one. |
+
+Network failures (timeout, refused connection, DNS) are **not** wrapped. They reject with the axios error,
+whose `code` (`ECONNABORTED`, `ECONNREFUSED`, `ENOTFOUND`…) tells you whether the request may have reached
+MTN. Its request headers and socket are stripped, so it is safe to log.
+
+```ts
+import { MtnMoMoError, NotEnoughFundsError } from "@yabetoo/mtn-momo-js";
+
+try {
+  await collections.getTransaction(referenceId);
+} catch (error) {
+  if (error instanceof NotEnoughFundsError) {
+    // the payer could not pay
+  } else if (error instanceof MtnMoMoError) {
+    console.error(error.status, error.url, error.failureReason);
+  } else {
+    throw error; // network error: the outcome is unknown, read the transaction again later
+  }
+}
+```
+
+## Observability
+
+`onEvent` receives one event per HTTP response, token mints included:
+
+```ts
+momo.create({
+  // …
+  onEvent: event => {
+    if (event.type === "response") {
+      metrics.observe("momo_request", event.durationMs, {
+        product: event.product,
+        method: event.method,
+        route: event.route,
+        status: String(event.status ?? "network_error")
+      });
+    }
+  }
 });
 ```
 
-## Collections
+`route` is templated (`/collection/v1_0/accountholder/msisdn/{id}/basicuserinfo`,
+`/collection/v1_0/requesttopay/{referenceId}`), so it is safe as a metric label. `errorCode` holds MTN's code
+or the network error code. A hook that throws is ignored.
 
-The collections client can be created with the following paramaters. Note that the `userId` and `userSecret` for production are provided on the MTN OVA dashboard;
+## Sandbox provisioning
 
-- `primaryKey`: Primary Key for the `Collections` product.
-- `userId`: For sandbox, use the one generated with the `momo-sandbox` command.
-- `userSecret`: For sandbox, use the one generated with the `momo-sandbox` command.
+In the sandbox, create an API user and its key with the subscription key of a product:
 
-You can create a collections client with the following
+```ts
+const { Users } = momo.create({ callbackHost: "callbacks.example.com" });
+const users = Users({ primaryKey: process.env.MOMO_SANDBOX_PRIMARY_KEY! });
 
-```js
-const collections = Collections({
-  userSecret: process.env.USER_SECRET,
-  userId: process.env.USER_ID,
-  primaryKey: process.env.PRIMARY_KEY
-});
+const userId = await users.create("callbacks.example.com");
+const { apiKey: userSecret } = await users.login(userId);
 ```
 
-#### Methods
+In production, MTN issues API users from its partner portal.
 
-1. `requestToPay(request: PaymentRequest): Promise<string>`: This operation is used to request a payment from a consumer (Payer). The payer will be asked to authorize the payment. The transaction is executed once the payer has authorized the payment. The transaction will be in status PENDING until it is authorized or declined by the payer or it is timed out by the system. Status of the transaction can be validated by using `getTransaction`
+## Development
 
-2. `getTransaction(transactionId: string): Promise<Payment>`: Retrieve transaction information using the `transactionId` returned by `requestToPay`. You can invoke it at intervals until the transaction fails or succeeds. If the transaction has failed, it will throw an appropriate error. The error will be a subclass of `MtnMoMoError`. Check [`src/error.ts`](https://github.com/sparkplug/momoapi-node/blob/master/src/errors.ts) for the various errors that can be thrown
-
-3. `getBalance(): Promise<Balance>`: Get the balance of the account.
-
-4. `isPayerActive(id: string, type: PartyIdType = "MSISDN"): Promise<string>`: check if an account holder is registered and active in the system.
-
-#### Sample Code
-
-```js
-const momo = require("mtn-momo");
-
-const { Collections } = momo.create({
-  callbackHost: process.env.CALLBACK_HOST
-});
-
-const collections = Collections({
-  userSecret: process.env.COLLECTIONS_USER_SECRET,
-  userId: process.env.COLLECTIONS_USER_ID,
-  primaryKey: process.env.COLLECTIONS_PRIMARY_KEY
-});
-
-// Request to pay
-collections
-  .requestToPay({
-    amount: "50",
-    currency: "EUR",
-    externalId: "123456",
-    payer: {
-      partyIdType: "MSISDN",
-      partyId: "256774290781"
-    },
-    payerMessage: "testing",
-    payeeNote: "hello"
-  })
-  .then(transactionId => {
-    console.log({ transactionId });
-
-    // Get transaction status
-    return collections.getTransaction(transactionId);
-  })
-  .then(transaction => {
-    console.log({ transaction });
-
-    // Get account balance
-    return collections.getBalance();
-  })
-  .then(accountBalance => console.log({ accountBalance }))
-  .catch(error => {
-    console.log(error);
-  });
+```sh
+npm ci
+npm run typecheck
+npm test            # against a strict in-process fake of the MTN gateway
+npm run build
+npm run smoke       # loads the built package through require and import
 ```
 
-## Disbursement
+## License
 
-The disbursements client can be created with the following paramaters. Note that the `userId` and `userSecret` for production are provided on the MTN OVA dashboard;
-
-- `primaryKey`: Primary Key for the `Disbursements` product.
-- `userId`: For sandbox, use the one generated with the `momo-sandbox` command.
-- `userSecret`: For sandbox, use the one generated with the `momo-sandbox` command.
-
-You can create a disbursements client with the following
-
-```js
-const disbursements = Disbursements({
-  userSecret: process.env.DISBURSEMENTS_USER_SECRET,
-  userId: process.env.DISBURSEMENTS_USER_ID,
-  primaryKey: process.env.DISBURSEMENTS_PRIMARY_KEY
-});
-```
-
-#### Methods
-
-1. `transfer(request: TransferRequest): Promise<string>`
-
-Used to transfer an amount from the owner’s account to a payee account. It returns a transaction id which can use to check the transaction status with the `getTransaction` function
-
-2. `getTransaction(transactionId: string): Promise<Transfer>`: Retrieve transaction information using the `transactionId` returned by `transfer`. You can invoke it at intervals until the transaction fails or succeeds. If the transaction has failed, it will throw an appropriate error. The error will be a subclass of `MtnMoMoError`. Check [`src/error.ts`](https://github.com/sparkplug/momoapi-node/blob/master/src/errors.ts) for the various errors that can be thrown
-
-3. `getBalance(): Promise<Balance>`: Get your account balance.
-
-4. `isPayerActive(id: string, type: PartyIdType = "MSISDN"): Promise<boolean>`: This method is used to check if an account holder is registered and active in the system.
-
-#### Sample Code
-
-```js
-const momo = require("mtn-momo");
-
-// initialise momo library
-const { Disbursements } = momo.create({
-  callbackHost: process.env.CALLBACK_HOST
-});
-
-// initialise disbursements
-const disbursements = Disbursements({
-  userSecret: process.env.DISBURSEMENTS_USER_SECRET,
-  userId: process.env.DISBURSEMENTS_USER_ID,
-  primaryKey: process.env.DISBURSEMENTS_PRIMARY_KEY
-});
-
-// Transfer
-disbursements
-  .transfer({
-    amount: "100",
-    currency: "EUR",
-    externalId: "947354",
-    payee: {
-      partyIdType: "MSISDN",
-      partyId: "+256776564739"
-    },
-    payerMessage: "testing",
-    payeeNote: "hello",
-    callbackUrl: "https://75f59b50.ngrok.io"
-  })
-  .then(transactionId => {
-    console.log({ transactionId });
-
-    // Get transaction status
-    return disbursements.getTransaction(transactionId);
-  })
-  .then(transaction => {
-    console.log({ transaction });
-
-    // Get account balance
-    return disbursements.getBalance();
-  })
-  .then(accountBalance => console.log({ accountBalance }))
-  .catch(error => {
-    console.log(error);
-  });
-```
-
+MIT

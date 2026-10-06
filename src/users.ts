@@ -1,41 +1,29 @@
+import { randomUUID } from "crypto";
 import { AxiosInstance } from "axios";
-import { v4 as uuid } from "uuid";
 
 import { Credentials } from "./common";
 
+/** Sandbox provisioning: in production MTN issues API users from its partner portal. */
 export default class Users {
-  private client: AxiosInstance;
-
-  constructor(client: AxiosInstance) {
-    this.client = client;
-  }
+  constructor(protected readonly client: AxiosInstance) {}
 
   /**
-   * Used to create an API user in the sandbox target environment
-   * @param host The provider callback host
+   * Creates an API user.
+   *
+   * @param host the provider callback host
+   * @returns the id of the new API user
    */
   public create(host: string): Promise<string> {
-    const userId: string = uuid();
+    const userId = randomUUID();
     return this.client
-      .post(
-        "/v1_0/apiuser",
-        { providerCallbackHost: host },
-        {
-          headers: {
-            "X-Reference-Id": userId
-          }
-        }
-      )
+      .post("/v1_0/apiuser", { providerCallbackHost: host }, { headers: { "X-Reference-Id": userId } })
       .then(() => userId);
   }
 
-  /**
-   * Used to create an API key for an API user in the sandbox target environment.
-   * @param userId
-   */
+  /** Creates an API key for an API user. */
   public login(userId: string): Promise<Credentials> {
     return this.client
-      .post<Credentials>(`/v1_0/apiuser/${userId}/apikey`)
+      .post<Credentials>(`/v1_0/apiuser/${encodeURIComponent(userId)}/apikey`)
       .then(response => response.data);
   }
 }
