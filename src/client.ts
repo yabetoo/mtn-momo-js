@@ -10,6 +10,7 @@ export function createClient(
   client: AxiosInstance = axios.create()
 ): AxiosInstance {
   client.defaults.baseURL = config.baseUrl;
+  client.defaults.timeout = 30000;
   client.defaults.headers = {
     "Ocp-Apim-Subscription-Key": config.primaryKey,
     "X-Target-Environment": config.environment || "sandbox"

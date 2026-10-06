@@ -14,7 +14,7 @@ import {RemittanceRequest} from "./remittances";
 export function validateRequestToPay(
   paymentRequest: PaymentRequest
 ): Promise<void> {
-  const { amount, currency, payer }: PaymentRequest = paymentRequest || {};
+  const { amount, currency, payer, referenceId }: PaymentRequest = paymentRequest || {};
   return Promise.resolve().then(() => {
     strictEqual(isTruthy(amount), true, "amount is required");
     strictEqual(isNumeric(amount), true, "amount must be a number");
@@ -27,6 +27,9 @@ export function validateRequestToPay(
       "payer.partyIdType is required"
     );
     strictEqual(isString(currency), true, "amount must be a string");
+    if (referenceId !== undefined) {
+      strictEqual(isUuid4(referenceId), true, "referenceId must be a valid uuid v4");
+    }
   });
 }
 
@@ -102,8 +105,6 @@ export function validateUserConfig({ userId, userSecret }: UserConfig): void {
 
   strictEqual(isTruthy(userSecret), true, "userSecret is required");
   strictEqual(isString(userSecret), true, "userSecret must be a string");
-
-  strictEqual(isUuid4(userId), true, "userId must be a valid uuid v4");
 }
 
 function isNumeric(value: any): boolean {

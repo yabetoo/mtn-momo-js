@@ -11,6 +11,12 @@ interface ErrorBody {
 
 export class MtnMoMoError extends Error {
   public transaction?: Payment | Transfer | Remit;
+  /** HTTP status of the MTN response that produced this error */
+  public status?: number;
+  /** Request path that produced this error */
+  public url?: string;
+  /** Raw MTN error code */
+  public failureReason?: string;
 
   constructor(message?: string) {
     super(message);
@@ -97,7 +103,11 @@ export function handleError(error: AxiosError): Error {
 
   const { code, message }: ErrorBody = error.response.data || {};
 
-  return getError(code, message);
+  const mtnError = getError(code, message);
+  mtnError.status = error.response.status;
+  mtnError.url = error.config && error.config.url;
+  mtnError.failureReason = code;
+  return mtnError;
 }
 
 export function getError(code?: FailureReason, message?: string) {

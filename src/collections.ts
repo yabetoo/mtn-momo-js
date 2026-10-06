@@ -14,6 +14,11 @@ import {
 
 export interface PaymentRequest {
   /**
+   * Unique request reference (UUID v4), generated if not supplied
+   */
+  referenceId?: string;
+
+  /**
    * Amount that will be debited from the payer account
    */
   amount: string;
@@ -123,10 +128,10 @@ export default class Collections {
    */
   public requestToPay({
     callbackUrl,
+    referenceId = uuid(),
     ...paymentRequest
   }: PaymentRequest): Promise<string> {
-    return validateRequestToPay(paymentRequest).then(() => {
-      const referenceId: string = uuid();
+    return validateRequestToPay({ referenceId, ...paymentRequest }).then(() => {
       return this.client
         .post<void>("/collection/v1_0/requesttopay", paymentRequest, {
           headers: {
