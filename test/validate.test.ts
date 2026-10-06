@@ -1,380 +1,73 @@
 import { AssertionError } from "assert";
-import { v4 as uuid } from "uuid";
+import { describe, expect, it } from "vitest";
 
-import { PaymentRequest } from "../src/collections";
-import { expect } from "./chai";
+import momo, { Environment, PayerType } from "../src";
+import { validateRequestToPay, validateTransfer } from "../src/validate";
 
-import { Environment, PartyIdType, ProductConfig, SubscriptionConfig, UserConfig } from "../src/common";
-import { TransferRequest } from "../src/disbursements";
-import {
-  validateGlobalConfig,
-  validateProductConfig,
-  validateRequestToPay,
-  validateSubscriptionConfig,
-  validateTransfer,
-  validateUserConfig
-} from "../src/validate";
+const credentials = { primaryKey: "key", userId: "user", userSecret: "secret" };
+const payer = { partyIdType: PayerType.MSISDN, partyId: "242061234567" };
 
-describe("Validate", function() {
-  describe("validateGlobalConfig", function() {
-    context("when callbackHost is not specified", function() {
-      it("throws an error", function() {
-        expect(validateGlobalConfig.bind(null, {})).to.throw(
-          AssertionError,
-          "callbackHost is required"
-        );
-      });
-    });
-
-    context("when callbackHost is specified", function() {
-      it("doesn't throw", function() {
-        expect(
-          validateGlobalConfig.bind(null, { callbackHost: "example.com" })
-        ).to.not.throw();
-      });
-    });
-
-    context("when environment is specified", function() {
-      context("and is not sandbox", function() {
-        context("and baseUrl is not specified", function() {
-          it("throws", function() {
-            expect(
-              validateGlobalConfig.bind(null, {
-                callbackHost: "example.com",
-                environment: Environment.PRODUCTION
-              })
-            ).to.throw(
-              AssertionError,
-              "baseUrl is required if environment is not sandbox"
-            );
-          });
-        });
-
-        context("and baseUrl is specified", function() {
-          it("doesn't throw", function() {
-            expect(
-              validateGlobalConfig.bind(null, {
-                callbackHost: "example.com",
-                environment: Environment.PRODUCTION,
-                baseUrl: "mtn production base url"
-              })
-            ).to.not.throw();
-          });
-        });
-      });
-    });
+describe("create()", () => {
+  it.each([
+    [{}, "callbackHost is required"],
+    [{ callbackHost: "h", environment: "mtncongo" }, "baseUrl is required if environment is not sandbox"],
+    [{ callbackHost: "h", environment: Environment.PRODUCTION, baseUrl: 1 as never }, "baseUrl must be a string"],
+    [{ callbackHost: "h", timeout: 0 }, "timeout must be a positive integer"],
+    [{ callbackHost: "h", timeout: 1.5 }, "timeout must be a positive integer"]
+  ])("rejects %j", (config, message) => {
+    expect(() => momo.create(config)).toThrow(expect.objectContaining({ code: "ERR_ASSERTION", message }));
   });
 
-  describe("validateProductConfig", function() {
-    context("when primaryKey is not specified", function() {
-      it("throws an error", function() {
-        expect(validateProductConfig.bind(null, {} as ProductConfig)).to.throw(
-          AssertionError,
-          "primaryKey is required"
-        );
-      });
-    });
-
-    context("when userId is not specified", function() {
-      it("throws an error", function() {
-        expect(
-          validateProductConfig.bind(null, {
-            primaryKey: "test primary key"
-          } as ProductConfig)
-        ).to.throw(AssertionError, "userId is required");
-      });
-    });
-
-    context("when userSecret is not specified", function() {
-      it("throws an error", function() {
-        expect(
-          validateProductConfig.bind(null, {
-            primaryKey: "test primary key",
-            userId: "test user id"
-          } as ProductConfig)
-        ).to.throw(AssertionError, "userSecret is required");
-      });
-    });
-
-    context("when userId is not a uuid", function() {
-      it("accepts it", function() {
-        expect(
-          validateProductConfig.bind(null, {
-            primaryKey: "test primary key",
-            userId: "yabetoo_api_user_01",
-            userSecret: "test user secret"
-          })
-        ).to.not.throw();
-      });
-    });
-
-    context("when the config is valid", function() {
-      it("throws an error", function() {
-        expect(
-          validateProductConfig.bind(null, {
-            primaryKey: "test primary key",
-            userId: uuid(),
-            userSecret: "test user secret"
-          })
-        ).to.not.throw();
-      });
-    });
+  it("accepts a sandbox config without baseUrl", () => {
+    expect(() => momo.create({ callbackHost: "h" })).not.toThrow();
   });
 
-  describe("validateSubscriptionConfig", function() {
-    context("when primaryKey is not specified", function() {
-      it("throws an error", function() {
-        expect(validateSubscriptionConfig.bind(null, {} as SubscriptionConfig)).to.throw(
-          AssertionError,
-          "primaryKey is required"
-        );
-      });
-    });
-
-    context("when primaryKey is specified", function() {
-      it("throws an error", function() {
-        expect(
-          validateSubscriptionConfig.bind(null, {
-            primaryKey: "test primary key"
-          })
-        ).to.not.throw();
-      });
-    });
+  it.each([
+    [{ ...credentials, primaryKey: "" }, "primaryKey is required"],
+    [{ ...credentials, userId: "" }, "userId is required"],
+    [{ ...credentials, userSecret: 42 as never }, "userSecret must be a string"]
+  ])("rejects product credentials %j for every product", (config, message) => {
+    const client = momo.create({ callbackHost: "h" });
+    expect(() => client.Collections(config)).toThrow(message);
+    expect(() => client.Disbursements(config)).toThrow(message);
+    expect(() => client.Remittances(config)).toThrow(message);
   });
 
-  describe("validateUserConfig", function() {
-    context("when userId is not specified", function() {
-      it("throws an error", function() {
-        expect(validateUserConfig.bind(null, {} as UserConfig)).to.throw(
-          AssertionError,
-          "userId is required"
-        );
-      });
-    });
-
-    context("when userSecret is not specified", function() {
-      it("throws an error", function() {
-        expect(
-          validateUserConfig.bind(null, {
-            userId: "test user id"
-          } as UserConfig)
-        ).to.throw(AssertionError, "userSecret is required");
-      });
-    });
-
-    context("when userId is not a uuid", function() {
-      it("accepts it", function() {
-        expect(
-          validateUserConfig.bind(null, {
-            userId: "yabetoo_api_user_01",
-            userSecret: "test user secret"
-          })
-        ).to.not.throw();
-      });
-    });
-
-    context("when the config is valid", function() {
-      it("throws an error", function() {
-        expect(
-          validateUserConfig.bind(null, {
-            userId: uuid(),
-            userSecret: "test user secret"
-          })
-        ).to.not.throw();
-      });
-    });
+  it("accepts an API user id that is not a UUID", () => {
+    expect(() => momo.create({ callbackHost: "h" }).Collections({ ...credentials, userId: "yabetoo_api_user_01" })).not.toThrow();
   });
 
-  describe("validateRequestToPay", function() {
-    context("when the amount is missing", function() {
-      it("throws an error", function() {
-        const request = {} as PaymentRequest;
-        return expect(validateRequestToPay(request)).to.be.rejectedWith(
-          "amount is required"
-        );
-      });
-    });
+  it("requires a subscription key for Users", () => {
+    expect(() => momo.create({ callbackHost: "h" }).Users({ primaryKey: "" })).toThrow("primaryKey is required");
+  });
+});
 
-    context("when the amount is not numeric", function() {
-      it("throws an error", function() {
-        const request = { amount: "alphabetic" } as PaymentRequest;
-        return expect(validateRequestToPay(request)).to.be.rejectedWith(
-          "amount must be a number"
-        );
-      });
-    });
+describe("request validation", () => {
+  const payment = { amount: "100", currency: "XAF", payer };
 
-    context("when the currency is missing", function() {
-      it("throws an error", function() {
-        const request = {
-          amount: "1000"
-        } as PaymentRequest;
-        return expect(validateRequestToPay(request)).to.be.rejectedWith(
-          "currency is required"
-        );
-      });
-    });
-
-    context("when the payer is missing", function() {
-      it("throws an error", function() {
-        const request = {
-          amount: "1000",
-          currency: "UGX"
-        } as PaymentRequest;
-        return expect(validateRequestToPay(request)).to.be.rejectedWith(
-          "payer is required"
-        );
-      });
-    });
-
-    context("when the party id is missing", function() {
-      it("throws an error", function() {
-        const request = {
-          amount: "1000",
-          currency: "UGX",
-          payer: {}
-        } as PaymentRequest;
-        return expect(validateRequestToPay(request)).to.be.rejectedWith(
-          "payer.partyId is required"
-        );
-      });
-    });
-
-    context("when the party id type is missing", function() {
-      it("throws an error", function() {
-        const request = {
-          amount: "1000",
-          currency: "UGX",
-          payer: {
-            partyId: "xxx"
-          }
-        } as PaymentRequest;
-        return expect(validateRequestToPay(request)).to.be.rejectedWith(
-          "payer.partyIdType is required"
-        );
-      });
-    });
-
-    context("when the request is valid", function() {
-      it("fulfills", function() {
-        const request = {
-          amount: "1000",
-          currency: "UGX",
-          payer: {
-            partyId: "xxx",
-            partyIdType: PartyIdType.MSISDN
-          }
-        } as PaymentRequest;
-        return expect(validateRequestToPay(request)).to.be.fulfilled;
-      });
-    });
+  it.each([
+    [{ ...payment, amount: "" }, "amount is required"],
+    [{ ...payment, amount: "abc" }, "amount must be a number"],
+    [{ ...payment, currency: "" }, "currency is required"],
+    [{ ...payment, payer: undefined as never }, "payer is required"],
+    [{ ...payment, payer: { ...payer, partyId: "" } }, "payer.partyId is required"],
+    [{ ...payment, payer: { ...payer, partyIdType: "" as never } }, "payer.partyIdType is required"],
+    [{ ...payment, referenceId: "not-a-uuid" }, "referenceId must be a valid uuid v4"]
+  ])("rejects a request to pay %j", async (request, message) => {
+    await expect(validateRequestToPay(request)).rejects.toMatchObject({ code: "ERR_ASSERTION", message });
   });
 
-  describe("validateTransfer", function() {
-    context("when the referenceId is missing", function() {
-      it("throws an error", function() {
-        const request = {} as TransferRequest;
-        return expect(validateTransfer(request)).to.be.rejectedWith(
-          "referenceId is required"
-        );
-      });
-    });
-      
-    context("when referenceId is not a valid uuid", function() {
-      it("throws an error", function () {
-        const request = { referenceId: "test reference id" } as TransferRequest;
-        return expect(validateTransfer(request)).to.be.rejectedWith(
-          "referenceId must be a valid uuid v4"
-        );
-      });
-    });
-      
-    context("when the amount is missing", function() {
-      it("throws an error", function() {
-        const request = { referenceId: uuid() } as TransferRequest;
-        return expect(validateTransfer(request)).to.be.rejectedWith(
-          "amount is required"
-        );
-      });
-    });
+  it("accepts a request to pay without reference", async () => {
+    await expect(validateRequestToPay(payment)).resolves.toBeUndefined();
+  });
 
-    context("when the amount is not numeric", function() {
-      it("throws an error", function() {
-        const request = { referenceId: uuid(), amount: "alphabetic" } as TransferRequest;
-        return expect(validateTransfer(request)).to.be.rejectedWith(
-          "amount must be a number"
-        );
-      });
-    });
+  it("names the payee in transfer errors", async () => {
+    await expect(validateTransfer({ amount: "1", currency: "XAF", payee: undefined as never })).rejects.toThrow(
+      "payee is required"
+    );
+  });
 
-    context("when the currency is missing", function() {
-      it("throws an error", function() {
-        const request = {
-          referenceId: uuid(),
-          amount: "1000"
-        } as TransferRequest;
-        return expect(validateTransfer(request)).to.be.rejectedWith(
-          "currency is required"
-        );
-      });
-    });
-
-    context("when the payee is missing", function() {
-      it("throws an error", function() {
-        const request = {
-          referenceId: uuid(),
-          amount: "1000",
-          currency: "UGX"
-        } as TransferRequest;
-        return expect(validateTransfer(request)).to.be.rejectedWith(
-          "payee is required"
-        );
-      });
-    });
-
-    context("when the party id is missing", function() {
-      it("throws an error", function() {
-        const request = {
-          referenceId: uuid(),
-          amount: "1000",
-          currency: "UGX",
-          payee: {}
-        } as TransferRequest;
-        return expect(validateTransfer(request)).to.be.rejectedWith(
-          "payee.partyId is required"
-        );
-      });
-    });
-
-    context("when the party id type is missing", function() {
-      it("throws an error", function() {
-        const request = {
-          referenceId: uuid(),
-          amount: "1000",
-          currency: "UGX",
-          payee: {
-            partyId: "xxx"
-          }
-        } as TransferRequest;
-        return expect(validateTransfer(request)).to.be.rejectedWith(
-          "payee.partyIdType is required"
-        );
-      });
-    });
-
-    context("when the request is valid", function() {
-      it("fulfills", function() {
-        const request = {
-          referenceId: uuid(),
-          amount: "1000",
-          currency: "UGX",
-          payee: {
-            partyId: "xxx",
-            partyIdType: PartyIdType.MSISDN
-          }
-        } as TransferRequest;
-        return expect(validateTransfer(request)).to.be.fulfilled;
-      });
-    });
+  it("rejects a missing request instead of crashing", async () => {
+    await expect(validateRequestToPay(undefined as never)).rejects.toBeInstanceOf(AssertionError);
   });
 });

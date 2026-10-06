@@ -1,89 +1,109 @@
+export type Product = "collection" | "disbursement" | "remittance";
+
 export type Config = GlobalConfig & ProductConfig;
 
 export type ProductConfig = SubscriptionConfig & UserConfig;
 
 export interface GlobalConfig {
-  /**
-   * The provider callback host
-   */
+  /** Host MTN calls back on (`X-Callback-Url` must belong to it). */
   callbackHost?: string;
 
-  /**
-   * The base URL of the EWP system where the transaction shall be processed.
-   * This parameter is used to route the request to the EWP system that will
-   * initiate the transaction.
-   */
+  /** Gateway base URL, e.g. `https://sandbox.momodeveloper.mtn.com`. Required outside the sandbox. */
   baseUrl?: string;
 
+  /** Value of `X-Target-Environment`: `sandbox`, or the market name MTN gave you (e.g. `mtncongo`). */
+  environment?: Environment | string;
+
+  /** Per-request timeout in milliseconds. Defaults to 30 000. */
+  timeout?: number;
+
   /**
-   * The identifier of the EWP system where the transaction shall be processed.
-   * This parameter is used to route the request to the EWP system that will
-   * initiate the transaction.
+   * Where access tokens are cached. Defaults to an in-memory store scoped to this `create()` call.
+   * Pass a shared store (Redis…) so every process and client reuses one token per API user.
    */
-  environment?: Environment;
+  tokenStore?: TokenStore;
+
+  /** Observability hook. Never receives URLs with phone numbers, headers or secrets. */
+  onEvent?: (event: MomoEvent) => void;
 }
 
 export interface SubscriptionConfig {
-  /**
-   * Subscription key which provides access to this API. Found in your Profile
-   */
+  /** Subscription key of the product (`Ocp-Apim-Subscription-Key`). */
   primaryKey: string;
 }
 
 export interface UserConfig {
-  /**
-   * The API user's key
-   */
+  /** API key of the API user. */
   userSecret: string;
 
-  /**
-   * Recource ID for the API user
-   */
+  /** API user id. Not necessarily a UUID: MTN now issues other formats. */
   userId: string;
 }
+
+/**
+ * Token cache. Errors are never fatal: a failing `get` is treated as a miss and a failing
+ * `set`/`delete` is ignored, both reported through `onEvent`.
+ */
+export interface TokenStore {
+  get(key: string): Promise<string | null | undefined>;
+  set(key: string, token: string, ttlSeconds: number): Promise<void>;
+  delete(key: string): Promise<void>;
+}
+
+export type MomoEvent =
+  | {
+      type: "response";
+      product: Product | "provisioning";
+      method: string;
+      /** Path with phone numbers and references replaced by placeholders. */
+      route: string;
+      /** Absent when no response came back (network error, timeout). */
+      status?: number;
+      durationMs: number;
+      /** MTN error code, or the network error code. */
+      errorCode?: string;
+    }
+  | {
+      type: "token_store_error";
+      product: Product;
+      operation: "get" | "set" | "delete";
+      error: unknown;
+    };
 
 export interface Credentials {
   apiKey: string;
 }
 
 export interface AccessToken {
-  /**
-   * A JWT token which can be used to authrize against the other API end-points.
-   * The format of the token follows the JWT standard format (see jwt.io for an example).
-   * This is the token that should be sent in in the Authorization header when calling the other API end-points.
-   */
   access_token: string;
-
-  /**
-   * The token type.
-   *
-   * TODO: Find list of complete token types
-   */
   token_type: string;
-
-  /**
-   * The validity time in seconds of the token
-   */
+  /** Validity in seconds. */
   expires_in: number;
 }
 
-/**
- * The available balance of the account
- */
 export interface Balance {
-  /**
-   * The available balance of the account
-   */
   availableBalance: string;
-
-  /**
-   * ISO4217 Currency
-   */
+  /** ISO 4217 currency. */
   currency: string;
 }
 
+/**
+ * MTN Congo production only returns `sub`, `given_name` and `family_name`; the sandbox returns
+ * more. Code against the optional fields.
+ */
+export interface BasicUserInfo {
+  sub?: string;
+  given_name?: string;
+  family_name?: string;
+  name?: string;
+  [field: string]: unknown;
+}
+
+/** The enum member or its string value: `PayerType.MSISDN` and `"MSISDN"` are both accepted. */
+export type PartyIdTypeValue = PartyIdType | `${PartyIdType}`;
+
 export interface Party {
-  partyIdType: PartyIdType;
+  partyIdType: PartyIdTypeValue;
   partyId: string;
 }
 
@@ -121,5 +141,7 @@ export enum FailureReason {
   APPROVAL_REJECTED = "APPROVAL_REJECTED",
   EXPIRED = "EXPIRED",
   TRANSACTION_CANCELED = "TRANSACTION_CANCELED",
-  RESOURCE_ALREADY_EXIST = "RESOURCE_ALREADY_EXIST"
+  RESOURCE_ALREADY_EXIST = "RESOURCE_ALREADY_EXIST",
+  COULD_NOT_PERFORM_TRANSACTION = "COULD_NOT_PERFORM_TRANSACTION",
+  LOW_BALANCE_OR_PAYEE_LIMIT_REACHED_OR_NOT_ALLOWED = "LOW_BALANCE_OR_PAYEE_LIMIT_REACHED_OR_NOT_ALLOWED"
 }
