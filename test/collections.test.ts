@@ -120,6 +120,30 @@ describe("Collections", function() {
     });
   });
 
+  describe("requestToPay referenceId", function() {
+    const request: PaymentRequest = {
+      amount: "50",
+      currency: "EUR",
+      payer: { partyIdType: PartyIdType.MSISDN, partyId: "256774290781" }
+    };
+
+    it("uses the supplied referenceId and keeps it out of the body", function() {
+      const referenceId = "1b6f9c4e-6a7d-4c1e-9f3a-2d5b8e7c0a11";
+      return expect(
+        collections.requestToPay({ ...request, referenceId })
+      ).to.eventually.eq(referenceId).then(() => {
+        expect(mockAdapter.history.post[0].headers["X-Reference-Id"]).to.eq(referenceId);
+        expect(mockAdapter.history.post[0].data).to.eq(JSON.stringify(request));
+      });
+    });
+
+    it("rejects a referenceId that is not a uuid v4", function() {
+      return expect(
+        collections.requestToPay({ ...request, referenceId: "not-a-uuid" })
+      ).to.be.rejectedWith("referenceId must be a valid uuid v4");
+    });
+  });
+
   describe("getTransaction", function() {
     it("makes the correct request", function() {
       return expect(

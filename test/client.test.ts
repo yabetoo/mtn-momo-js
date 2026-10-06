@@ -27,6 +27,7 @@ describe("Client", function() {
         "X-Target-Environment",
         "sandbox"
       );
+      expect(client.defaults.timeout).to.eq(30000);
     });
 
     it("makes requests with the right headers", function() {

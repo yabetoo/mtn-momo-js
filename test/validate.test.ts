@@ -96,15 +96,15 @@ describe("Validate", function() {
       });
     });
 
-    context("when userId is not a valid uuid", function() {
-      it("throws an error", function() {
+    context("when userId is not a uuid", function() {
+      it("accepts it", function() {
         expect(
           validateProductConfig.bind(null, {
             primaryKey: "test primary key",
-            userId: "test user id",
+            userId: "yabetoo_api_user_01",
             userSecret: "test user secret"
           })
-        ).to.throw(AssertionError, "userId must be a valid uuid v4");
+        ).to.not.throw();
       });
     });
 
@@ -162,14 +162,14 @@ describe("Validate", function() {
       });
     });
 
-    context("when userId is not a valid uuid", function() {
-      it("throws an error", function() {
+    context("when userId is not a uuid", function() {
+      it("accepts it", function() {
         expect(
           validateUserConfig.bind(null, {
-            userId: "test user id",
+            userId: "yabetoo_api_user_01",
             userSecret: "test user secret"
           })
-        ).to.throw(AssertionError, "userId must be a valid uuid v4");
+        ).to.not.throw();
       });
     });
 

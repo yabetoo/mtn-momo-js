@@ -3,6 +3,7 @@ import {
   ApprovalRejectedError,
   ExpiredError,
   getError,
+  handleError,
   InternalProcessingError,
   InvalidCallbackUrlHostError,
   InvalidCurrencyError,
@@ -107,6 +108,21 @@ describe("Errors", function() {
         expect(getError(FailureReason.TRANSACTION_CANCELED, "test message"))
           .is.instanceOf(TransactionCancelledError)
           .and.has.property("message", "test message");
+      });
+    });
+  });
+
+  describe("handleError", function() {
+    it("carries the HTTP status, url and raw MTN code", function() {
+      const error = handleError({
+        config: { url: "/collection/v1_0/requesttopay" },
+        response: { status: 409, data: { code: FailureReason.RESOURCE_ALREADY_EXIST, message: "dup" } }
+      } as any);
+      expect(error).is.instanceOf(ResourceAlreadyExistError);
+      expect(error).to.include({
+        status: 409,
+        url: "/collection/v1_0/requesttopay",
+        failureReason: FailureReason.RESOURCE_ALREADY_EXIST
       });
     });
   });
