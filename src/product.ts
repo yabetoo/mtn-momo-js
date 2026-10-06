@@ -1,7 +1,7 @@
 import { AxiosInstance } from "axios";
 
 import { Balance, BasicUserInfo, PartyIdType, PartyIdTypeValue, Product, TransactionStatus } from "./common";
-import { getTransactionError } from "./errors";
+import { getError, getTransactionError } from "./errors";
 import { check } from "./validate";
 
 const MSISDN = /^\d{8,15}$/;
@@ -38,14 +38,23 @@ export abstract class ProductClient<T extends { status: TransactionStatus }> {
   }
 
   /**
-   * Whether an account holder is registered and active.
+   * Whether an account holder is registered and active. An answer without a boolean `result`
+   * rejects with `UnspecifiedError` rather than reading as `false`: "no answer" is not "inactive".
    *
    * @param id the party id: an MSISDN in international format without `+`, an email or a party code
    */
   public isPayerActive(id: string, type: PartyIdTypeValue = PartyIdType.MSISDN): Promise<boolean> {
     return this.client
-      .get<{ result?: boolean }>(this.accountHolderPath(type, id, "active"))
-      .then(response => response.data.result === true);
+      .get<{ result?: unknown }>(this.accountHolderPath(type, id, "active"))
+      .then(({ data, status, config }) => {
+        if (typeof data?.result === "boolean") {
+          return data.result;
+        }
+        const error = getError(undefined, "MTN answered /active without a boolean result");
+        error.status = status;
+        error.url = config.url;
+        throw error;
+      });
   }
 
   /**

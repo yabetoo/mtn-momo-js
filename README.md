@@ -78,7 +78,7 @@ Every product client (`Collections`, `Disbursements`, `Remittances`) exposes:
 | --- | --- |
 | `getTransaction(referenceId)` | The transaction. A `FAILED` one rejects with its typed error. |
 | `getBalance(currency?)` | `{ availableBalance, currency }`, in the account currency or the one given. |
-| `isPayerActive(id, type = "MSISDN")` | `true` if the account holder is registered and active. |
+| `isPayerActive(id, type = "MSISDN")` | `true` if the account holder is registered and active. An answer without a boolean rejects. |
 | `getBasicUserInfo(msisdn)` | The holder's name (`given_name`, `family_name`…). Rejects with `status: 404` for an unknown number. |
 
 And one initiation, each returning the reference sent as `X-Reference-Id`:

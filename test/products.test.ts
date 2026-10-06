@@ -161,6 +161,20 @@ describe("account endpoints", () => {
     expect(fake.productRequests()[2].path).toBe("/collection/v1_0/accountholder/email/someone%40example.com/active");
   });
 
+  it("rejects an /active answer without a boolean instead of reading it as inactive", async () => {
+    const { collections } = clients(fake);
+    fake.respondOnce("GET", /active$/, 200, {});
+    fake.respondOnce("GET", /active$/, 200, { result: "true" });
+
+    for (let i = 0; i < 2; i++) {
+      await expect(collections.isPayerActive("242061234567")).rejects.toMatchObject({
+        name: "UnspecifiedError",
+        status: 200,
+        url: "/collection/v1_0/accountholder/msisdn/242061234567/active"
+      });
+    }
+  });
+
   it("returns the account holder's name", async () => {
     const info = { sub: "0", given_name: "Jane", family_name: "Doe" };
     fake.accountHolders.set("242061234567", { active: true, info });

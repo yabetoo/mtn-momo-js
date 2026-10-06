@@ -19,7 +19,8 @@
 
 - Concurrent calls share one token mint instead of minting one each.
 - Network errors keep their axios `code` but lose their request headers and socket, so they are safe to log.
-- `isPayerActive` returns a `boolean` instead of MTN's `{ result }` body.
+- `isPayerActive` returns a `boolean` instead of MTN's `{ result }` body, and rejects with
+  `UnspecifiedError` when MTN answers without one: "no answer" is not "inactive".
 - Validation error messages no longer depend on the Node.js version.
 - `axios` 1.x; `uuid` and `commander` removed. Node.js 20 or later.
 
